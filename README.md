@@ -18,11 +18,10 @@ pip install -r requirements.txt
 
 ```
 catastro_prediccion/
-├── src/                    # Módulos del pipeline
-├── notebooks/              # Notebook de exploración
-├── output/                 # Resultados y reportes
-├── main.py                 # Script principal
-└── predio_10.csv          # Datos de entrada
+├── src/                                  # Módulos del pipeline
+├── output/                               # Resultados y reportes
+├── main.py                               # Script principal
+└── dataset_final_formateado.xlsx         # Datos de entrada
 ```
 
 ## Uso
@@ -39,11 +38,6 @@ Esto generará:
 - `output/models/`: Modelos entrenados guardados
 - `output/figures/`: Gráficas generadas
 
-### Exploración interactiva:
-
-```bash
-jupyter notebook notebooks/exploracion_entrenamiento.ipynb
-```
 
 ## Características Principales
 
@@ -77,13 +71,8 @@ El sistema detecta automáticamente columnas que pueden filtrar información de 
 
 - Cross-validation (k=5)
 - GridSearch/RandomizedSearch para hiperparámetros
-- Métricas: R², MAE, RMSE, MAPE
+- Métricas: R², MAE, RMSE
 
-## Formato del CSV
-
-- **Separador**: `;` (punto y coma)
-- **Decimales**: `,` (coma) - ejemplo: `1.234,56`
-- **Encoding**: UTF-8 o latin1 (detección automática)
 
 ## Salida del Reporte
 
@@ -99,5 +88,5 @@ El `summary.html` incluye:
 - Visualización del impacto del leakage
 
 ## Autor
-
-Proyecto profesional para análisis catastral con enfoque en prevención de data leakage.
+Fausto Guano
+Universidad Yachay Tech
