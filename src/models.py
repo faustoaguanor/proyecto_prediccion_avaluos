@@ -176,10 +176,11 @@ class RegressionModels:
         # Grids de hiperparámetros
         param_grids = {
             "RandomForest": {
-                "n_estimators": [50, 100, 200],
-                "max_depth": [10, 20, None],
+                "n_estimators": [100, 200, 300, 500],
+                "max_depth": [15, 20, 25],
                 "min_samples_split": [2, 5, 10],
                 "min_samples_leaf": [1, 2, 4],
+                "max_features": ["sqrt", "log2", 0.3],
             },
             "GradientBoosting": {
                 "n_estimators": [150, 300, 500, 1000],

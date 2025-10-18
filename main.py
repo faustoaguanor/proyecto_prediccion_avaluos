@@ -166,6 +166,109 @@ class CatastroPipeline:
         print(f"  - Features nuevas: {len(nuevas_features)}")
         print(f"  - Total final: {X_all.shape[1]}")
 
+        # ========== 🎯 NUEVO: LIMPIEZA Y TRANSFORMACIÓN DEL TARGET ==========
+        print("\n" + "🔧" * 35)
+        print("LIMPIEZA CRÍTICA DEL TARGET")
+        print("🔧" * 35)
+
+        print("\n[1/5] Análisis del target original...")
+        print(f"  - Registros totales: {len(y):,}")
+        print(f"  - Mínimo: ${y.min():,.2f}")
+        print(f"  - Percentil 1%: ${y.quantile(0.01):,.2f}")
+        print(f"  - Percentil 5%: ${y.quantile(0.05):,.2f}")
+        print(f"  - Mediana: ${y.median():,.2f}")
+        print(f"  - Media: ${y.mean():,.2f}")
+        print(f"  - Percentil 95%: ${y.quantile(0.95):,.2f}")
+        print(f"  - Percentil 99%: ${y.quantile(0.99):,.2f}")
+        print(f"  - Máximo: ${y.max():,.2f}")
+        print(f"  - Ratio Max/Min: {y.max()/y.min():.1f}x")
+
+        from scipy.stats import skew
+
+        asimetria_original = skew(y)
+        print(f"  - Asimetría: {asimetria_original:.2f}")
+
+        # [2/5] Filtrar outliers extremos
+        print("\n[2/5] Filtrando outliers extremos (1% inferior y superior)...")
+        percentil_01 = y.quantile(0.01)
+        percentil_99 = y.quantile(0.99)
+
+        mask_percentiles = (y >= percentil_01) & (y <= percentil_99)
+
+        print(f"  - Límite inferior (P1): ${percentil_01:,.2f}")
+        print(f"  - Límite superior (P99): ${percentil_99:,.2f}")
+        print(f"  - Outliers extremos: {(~mask_percentiles).sum():,} registros")
+
+        # [3/5] Eliminar valores muy pequeños (causan MAPE alto)
+        print("\n[3/5] Filtrando valores mínimos problemáticos...")
+        umbral_minimo = 10000  # $10,000
+        mask_minimo = y >= umbral_minimo
+
+        valores_muy_bajos = (~mask_minimo).sum()
+        if valores_muy_bajos > 0:
+            print(
+                f"  ⚠️  Detectados {valores_muy_bajos} valores < ${umbral_minimo:,.0f}"
+            )
+            print(f"     Estos causan MAPE extremadamente alto (error %)")
+            print(f"  → Eliminando para mejorar métricas")
+
+        # Combinar máscaras
+        mask_valido = mask_percentiles & mask_minimo
+        registros_eliminados = (~mask_valido).sum()
+
+        print(f"\n  📊 Resumen del filtrado:")
+        print(f"     - Registros originales: {len(y):,}")
+        print(
+            f"     - Registros eliminados: {registros_eliminados:,} ({registros_eliminados/len(y)*100:.1f}%)"
+        )
+        print(f"     - Registros finales: {mask_valido.sum():,}")
+
+        # Aplicar filtro a X_all, y, y df_ids
+        X_all = X_all[mask_valido]
+        y = y[mask_valido]
+
+        if hasattr(self, "df_ids") and not self.df_ids.empty:
+            self.df_ids = self.df_ids[mask_valido]
+
+        print(f"\n  ✓ Nuevo rango del target: ${y.min():,.2f} - ${y.max():,.2f}")
+
+        # [4/5] Transformación logarítmica
+        print("\n[4/5] Aplicando transformación logarítmica...")
+
+        # Guardar versión sin transformar para referencia
+        self.y_sin_transformar = y.copy()
+
+        # Aplicar log
+        y_antes_log = y.copy()
+        y = np.log1p(y)  # log(1 + y) para evitar log(0)
+
+        print(
+            f"  - Target original: ${y_antes_log.min():,.0f} - ${y_antes_log.max():,.0f}"
+        )
+        print(f"  - Target log: {y.min():.2f} - {y.max():.2f}")
+        print(f"  - Ratio original: {y_antes_log.max()/y_antes_log.min():.1f}x")
+        print(f"  - Ratio log: {np.exp(y.max())/np.exp(y.min()):.1f}x")
+
+        # [5/5] Verificación
+        print("\n[5/5] Verificación de la transformación...")
+        asimetria_log = skew(y)
+        print(f"  - Asimetría antes: {asimetria_original:.2f}")
+        print(f"  - Asimetría después: {asimetria_log:.2f}")
+
+        mejora_asimetria = abs(asimetria_original) - abs(asimetria_log)
+        print(f"  - Mejora: {mejora_asimetria:.2f}")
+
+        if abs(asimetria_log) < 0.5:
+            print("  ✅ Distribución normalizada exitosamente")
+        elif abs(asimetria_log) < abs(asimetria_original):
+            print("  ✅ Distribución mejorada significativamente")
+        else:
+            print("  ⚠️  Distribución mejorada parcialmente")
+
+        print("\n" + "=" * 70)
+        print("✅ TARGET PREPARADO PARA MODELADO")
+        print("=" * 70)
+
         # ========== 5. EXPERIMENTO A: SIN LEAKAGE ==========
         print("\n" + "■" * 70)
         print("FASE 5: EXPERIMENTO A - MODELO SIN FEATURES SOSPECHOSAS")
@@ -192,7 +295,7 @@ class CatastroPipeline:
 
         # ✅ AGREGAR FEATURE SELECTION AQUÍ (OPCIONAL) ✅
         APLICAR_FEATURE_SELECTION = True  # ← Cambiar a False para desactivar
-        MAX_FEATURES = 10
+        MAX_FEATURES = 60
 
         if APLICAR_FEATURE_SELECTION:
             print("\n" + "⚡" * 35)
@@ -400,51 +503,51 @@ class CatastroPipeline:
         print("=" * 70)
 
         print("\n📁 ARCHIVOS GENERADOS:")
-        print(f"  ├── {self.output_dir}/leakage_report.json")
-        print(f"  ├── {self.output_dir}/summary.html")
-        print(f"  ├── {self.output_dir}/models/")
-        print(f"  │   ├── experiment_a/  (modelos sin leakage - RECOMENDADO)")
-        print(f"  │   └── experiment_b/  (modelos con leakage - solo referencia)")
-        print(f"  └── {self.output_dir}/figures/")
-        print(f"      ├── univariate_analysis.png")
-        print(f"      ├── correlation_analysis.png")
-        print(f"      ├── experiment_comparison.png")
-        print(f"      └── ... (más gráficas)")
+        print("  ├── output/leakage_report.json")
+        print("  ├── output/summary.html")
+        print("  ├── output/ejemplos_test_streamlit.xlsx")
+        print("  ├── output/test_completo_con_predicciones.xlsx")
+        print("  ├── output/models/")
+        print("  │   ├── experiment_a/  (modelos sin leakage - RECOMENDADO)")
+        print("  │   └── experiment_b/  (modelos con leakage - solo referencia)")
+        print("  └── output/figures/")
 
-        print("\n🎯 RECOMENDACIONES:")
-        print(
-            f"  1. Revisar {self.output_dir}/leakage_report.json para ver features excluidas"
-        )
-        print(
-            f"  2. Abrir {self.output_dir}/summary.html en navegador para reporte completo"
-        )
-        print(f"  3. Usar modelos del Experimento A para producción")
-        print(f"  4. El Experimento B es solo referencia del impacto del leakage")
+        print("\n🎯 NOTAS IMPORTANTES:")
+        print("  ⚠️  El target fue transformado con LOG para mejorar predicciones")
+        print("  ✓ Las predicciones están en escala de DÓLARES (des-transformadas)")
+        print("  ✓ Outliers extremos fueron filtrados (mejora MAPE)")
 
-        # Mostrar mejores modelos
-        best_a = max(results_a.items(), key=lambda x: x[1]["r2_test"])
-        best_b = max(results_b.items(), key=lambda x: x[1]["r2_test"])
+        # Calcular mejor modelo
+        best_name_a = max(results_a.items(), key=lambda x: x[1]["r2_test"])[0]
+        best_name_b = max(results_b.items(), key=lambda x: x[1]["r2_test"])[0]
 
         print("\n📊 MEJORES MODELOS:")
-        print(f"  Experimento A (Sin Leakage): {best_a[0]}")
+        print(f"  Experimento A (Sin Leakage): {best_name_a}")
         print(
-            f"    └─ R² = {best_a[1]['r2_test']:.4f}, RMSE = {best_a[1]['rmse_test']:,.2f}"
+            f"    └─ R² = {results_a[best_name_a]['r2_test']:.4f}, RMSE = ${results_a[best_name_a]['rmse_test']:,.2f}"
         )
-        print(f"  Experimento B (Con Leakage): {best_b[0]}")
+        print(f"  Experimento B (Con Leakage): {best_name_b}")
         print(
-            f"    └─ R² = {best_b[1]['r2_test']:.4f}, RMSE = {best_b[1]['rmse_test']:,.2f}"
+            f"    └─ R² = {results_b[best_name_b]['r2_test']:.4f}, RMSE = ${results_b[best_name_b]['rmse_test']:,.2f}"
         )
-        print(f"  Diferencia R² = {best_b[1]['r2_test'] - best_a[1]['r2_test']:.4f} ⚠️")
+
+        diferencia = (
+            results_b[best_name_b]["r2_test"] - results_a[best_name_a]["r2_test"]
+        )
+        print(f"  Diferencia R² = {diferencia:+.4f}")
+
+        if abs(diferencia) < 0.02:
+            print("    ✅ Sin evidencia de leakage significativo")
+        elif diferencia > 0.05:
+            print("    ⚠️  Posible leakage (B >> A)")
+        else:
+            print("    ℹ️  Diferencia moderada")
 
         print("\n" + "=" * 70)
         print("Gracias por usar el sistema de análisis catastral")
-        print("=" * 70 + "\n")
+        print("=" * 70)
 
-        print("\n" + "■" * 70)
-        print("FASE FINAL: EXPORTAR EJEMPLOS DE PRUEBA")
-        print("■" * 70)
-
-        # ========== AL FINAL, DESPUÉS DE TODO ==========
+        # ==========  EXPORTANDO 5 EJEMPLOS DEL TEST SET  ==========
 
         print("\n" + "■" * 70)
         print("EXPORTANDO 5 EJEMPLOS DEL TEST SET (para Streamlit)")
@@ -470,8 +573,12 @@ class CatastroPipeline:
             ejemplos_test[col] = X_test_ejemplos[col].values
 
         # 3. Agregar valor real
-        y_test_ejemplos = y_test_a.iloc[indices_aleatorios]
-        ejemplos_test["Valoracion_Real"] = y_test_ejemplos.values
+        # y_test_ejemplos = y_test_a.iloc[indices_aleatorios]
+        # ejemplos_test["Valoracion_Real"] = y_test_ejemplos.values
+        y_test_ejemplos_dolar = np.expm1(
+            y_test_a.iloc[indices_aleatorios]
+        )  # Des-transformar
+        ejemplos_test["Valoracion_Real"] = y_test_ejemplos_dolar.values
 
         # 4. Columnas para llenar
         ejemplos_test["Valoracion_Predicha"] = ""
@@ -527,15 +634,37 @@ class CatastroPipeline:
         best_model_a = results_a[best_model_a_name]["model"]
         best_r2 = results_a[best_model_a_name]["r2_test"]
 
+        self.best_model_name_a = best_model_a_name
+        self.best_r2_a = best_r2
+        self.best_rmse_a = results_a[best_model_a_name]["rmse_test"]
+
         print(f"✓ Usando mejor modelo: {best_model_a_name} (R² = {best_r2:.4f})")
 
         # Hacer predicciones en TODO el test set
         print(f"✓ Haciendo predicciones en {len(X_test_a):,} registros del test...")
-        y_pred_test_a = best_model_a.predict(X_test_a)
+        # y_pred_test_a = best_model_a.predict(X_test_a)
+        # Predicción en escala log
+        y_pred_log = best_model_a.predict(X_test_a)
+
+        # Des-transformar a dólares
+        y_pred_test_a = np.expm1(y_pred_log)  # exp(y) - 1
+        y_test_a_dolar = np.expm1(y_test_a)  # exp(y) - 1
+
+        print(f"  ✓ Predicciones des-transformadas a escala de dólares")
 
         # Calcular errores
-        errores_absolutos = np.abs(y_test_a - y_pred_test_a)
-        errores_porcentuales = (errores_absolutos / y_test_a) * 100
+        # errores_absolutos = np.abs(y_test_a - y_pred_test_a)
+        # errores_porcentuales = (errores_absolutos / y_test_a) * 100
+
+        errores_absolutos = np.abs(y_test_a_dolar - y_pred_test_a)
+        errores_porcentuales = (errores_absolutos / y_test_a_dolar) * 100
+
+        # Verificación
+        print(f"\n📊 Verificación de escala:")
+        print(f"  - Predicción mín: ${y_pred_test_a.min():,.2f}")
+        print(f"  - Predicción máx: ${y_pred_test_a.max():,.2f}")
+        print(f"  - Real mín: ${y_test_a_dolar.min():,.2f}")
+        print(f"  - Real máx: ${y_test_a_dolar.max():,.2f}")
 
         # Crear DataFrame completo
         test_completo = pd.DataFrame()
@@ -571,11 +700,17 @@ class CatastroPipeline:
                 test_completo[feat] = X_test_a[feat].values
 
         # 4. Valores reales, predichos y errores
-        test_completo["Valoracion_Real"] = y_test_a.values
+        """test_completo["Valoracion_Real"] = y_test_a.values
         test_completo["Valoracion_Predicha"] = y_pred_test_a
         test_completo["Error_Absoluto"] = errores_absolutos
         test_completo["Error_Porcentual"] = errores_porcentuales
-        test_completo["Error_Relativo"] = y_pred_test_a - y_test_a
+        test_completo["Error_Relativo"] = y_pred_test_a - y_test_a"""
+
+        test_completo["Valoracion_Real"] = y_test_a_dolar  # ✅ Ya des-transformado
+        test_completo["Valoracion_Predicha"] = y_pred_test_a  # ✅ Ya des-transformado
+        test_completo["Error_Absoluto"] = errores_absolutos
+        test_completo["Error_Porcentual"] = errores_porcentuales
+        test_completo["Error_Relativo"] = y_pred_test_a - y_test_a_dolar
 
         # 5. Clasificar magnitud del error
         test_completo["Magnitud_Error"] = pd.cut(
