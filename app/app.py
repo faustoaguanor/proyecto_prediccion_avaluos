@@ -73,7 +73,7 @@ def cargar_modelo():
             # Intentar ruta alternativa
             modelo_path = Path("GradientBoosting.pkl")
 
-        modelo = joblib.load(modelo_path)
+        modelo = joblib.load(r"app/modelo_path")
         return modelo, None
     except Exception as e:
         return None, str(e)
