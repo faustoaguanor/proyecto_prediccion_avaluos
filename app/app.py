@@ -146,7 +146,7 @@ def main():
     # Sidebar - Información del modelo
     with st.sidebar:
         st.image(
-            r"app\\logo.png",
+            "app/logo.png",
             width="stretch",
         )
 
