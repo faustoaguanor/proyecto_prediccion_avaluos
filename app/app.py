@@ -71,9 +71,9 @@ def cargar_modelo():
         modelo_path = Path(r"app\GradientBoosting.pkl")
         if not modelo_path.exists():
             # Intentar ruta alternativa
-            modelo_path = Path("GradientBoosting.pkl")
+            modelo_path = Path(r"app/GradientBoosting.pkl")
 
-        modelo = joblib.load(r"app/modelo_path")
+        modelo = joblib.load(modelo_path)
         return modelo, None
     except Exception as e:
         return None, str(e)
@@ -146,7 +146,7 @@ def main():
     # Sidebar - Información del modelo
     with st.sidebar:
         st.image(
-            r"app\logo.png",
+            r"app\\logo.png",
             width="stretch",
         )
 
