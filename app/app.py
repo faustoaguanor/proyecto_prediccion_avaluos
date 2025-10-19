@@ -81,21 +81,25 @@ def cargar_modelo_y_ejemplos():
     scaler = None
     ejemplos_df = None
     feature_names = None
-    error = None
 
-    url_modelo = "https://drive.google.com/uc?id=1-dBlir79JO8J0vv8eDjQtIgRq_wh4Pb8"
+    # ========== CARGAR MODELO ==========
+    st.info("📥 Cargando modelo...")
+
+    url_modelo = "https://drive.google.com/uc?export=download&id=1-dBlir79JO8J0vv8eDjQtIgRq_wh4Pb8"
+
     try:
-        response = requests.get(url_modelo)
+        response = requests.get(url_modelo, timeout=30)
         response.raise_for_status()
         modelo = joblib.load(BytesIO(response.content))
         feature_names = (
             modelo.feature_names_in_ if hasattr(modelo, "feature_names_in_") else None
         )
-        st.success("Modelo cargado desde Google Drive ✅")
+        st.success("✅ Modelo cargado desde Google Drive")
+
     except Exception as e:
-        st.warning(f"No se pudo cargar el modelo desde Google Drive: {e}")
-        # intentar cargar local
-        # Cargar modelo
+        st.warning(f"⚠️ No se pudo cargar desde Google Drive: {str(e)[:100]}...")
+        st.info("🔄 Intentando cargar desde archivos locales...")
+
         posibles_rutas = [
             Path("output/models/experiment_a/randomforest_model.pkl"),
             Path("app/randomforest_model.pkl"),
@@ -103,22 +107,40 @@ def cargar_modelo_y_ejemplos():
         ]
 
         for ruta in posibles_rutas:
-            p = Path(ruta)
-            if p.exists():
-                modelo = joblib.load(p)
-                feature_names = (
-                    modelo.feature_names_in_
-                    if hasattr(modelo, "feature_names_in_")
-                    else None
-                )
-                st.success(f"Modelo cargado desde {ruta} ✅")
-                break
-        if modelo is None:
-            st.error("No se encontró el modelo en ninguna ubicación")
+            if ruta.exists():
+                try:
+                    modelo = joblib.load(ruta)
+                    feature_names = (
+                        modelo.feature_names_in_
+                        if hasattr(modelo, "feature_names_in_")
+                        else None
+                    )
+                    st.success(f"✅ Modelo cargado desde: {ruta}")
+                    break
+                except Exception as e:
+                    st.error(f"❌ Error cargando {ruta}: {str(e)[:50]}")
 
-        # Intentar cargar scaler
+        if modelo is None:
+            error = "No se encontró el modelo en ninguna ubicación"
+            st.error(error)
+            return None, None, None, None, error
+
+    # ========== CARGAR SCALER ==========
+    st.info("📥 Cargando scaler...")
+
+    url_scaler = "https://drive.google.com/uc?export=download&id=18ptHEZo_vud1z7rBwfZLjHy2M6RjvvA2"
+
+    try:
+        response = requests.get(url_scaler, timeout=30)
+        response.raise_for_status()
+        scaler = joblib.load(BytesIO(response.content))
+        st.success("✅ Scaler cargado desde Google Drive")
+
+    except Exception as e:
+        st.warning(f"⚠️ No se pudo cargar scaler desde Google Drive: {str(e)[:100]}...")
+        st.info("🔄 Intentando cargar desde archivos locales...")
+
         posibles_rutas_scaler = [
-            Path("https://drive.google.com/uc?id=18ptHEZo_vud1z7rBwfZLjHy2M6RjvvA2"),
             Path("output/models/experiment_a/scaler.pkl"),
             Path("app/scaler.pkl"),
             Path("scaler.pkl"),
@@ -126,10 +148,30 @@ def cargar_modelo_y_ejemplos():
 
         for ruta in posibles_rutas_scaler:
             if ruta.exists():
-                scaler = joblib.load(ruta)
-                break
+                try:
+                    scaler = joblib.load(ruta)
+                    st.success(f"✅ Scaler cargado desde: {ruta}")
+                    break
+                except Exception as e:
+                    st.error(f"❌ Error cargando scaler {ruta}: {str(e)[:50]}")
 
-        # Cargar ejemplos
+    # ========== CARGAR EJEMPLOS DESDE GOOGLE SHEETS ==========
+    st.info("📥 Cargando ejemplos...")
+
+    url_excel = "https://docs.google.com/spreadsheets/d/1hWwk6e7RckOPl-bgGt61nNAzAL6PqPLU/export?format=xlsx"
+
+    try:
+        response = requests.get(url_excel, timeout=30)
+        response.raise_for_status()
+        ejemplos_df = pd.read_excel(
+            BytesIO(response.content), sheet_name="Ejemplos_Test"
+        )
+        st.success("✅ Ejemplos cargados desde Google Sheets")
+
+    except Exception as e:
+        st.warning(f"⚠️ No se pudo cargar desde Google Sheets: {str(e)[:100]}...")
+        st.info("🔄 Intentando cargar desde archivos locales...")
+
         posibles_rutas_ejemplos = [
             Path("output/ejemplos_test_streamlit.xlsx"),
             Path("app/ejemplos_test_streamlit.xlsx"),
@@ -138,20 +180,50 @@ def cargar_modelo_y_ejemplos():
 
         for ruta in posibles_rutas_ejemplos:
             if ruta.exists():
-                # Intentar cargar la hoja con SOLO las features del modelo
                 try:
                     ejemplos_df = pd.read_excel(ruta, sheet_name="Ejemplos_Test")
-                    st.write("✓ Cargada hoja 'Ejemplos_Test'")
+                    st.success(f"✅ Ejemplos cargados desde: {ruta}")
+                    break
                 except:
-                    # Si no existe esa hoja, cargar la primera
-                    ejemplos_df = pd.read_excel(ruta)
-                    st.write("⚠️ Usando hoja por defecto")
-                break
+                    try:
+                        ejemplos_df = pd.read_excel(ruta)
+                        st.warning(f"⚠️ Usando hoja por defecto de: {ruta}")
+                        break
+                    except Exception as e:
+                        st.error(f"❌ Error cargando {ruta}: {str(e)[:50]}")
 
-        return modelo, scaler, ejemplos_df, feature_names, None
+    # ========== VERIFICACIONES FINALES ==========
+    if modelo is None:
+        error = "❌ No se pudo cargar el modelo"
+        st.error(error)
+        return None, None, None, None, error
 
-    except Exception as e:
-        return None, None, None, None, str(e)
+    if ejemplos_df is None:
+        error = "❌ No se pudieron cargar los ejemplos"
+        st.error(error)
+        return None, None, None, None, error
+
+    # Resumen
+    st.markdown("---")
+    st.markdown("### 📊 Resumen de Carga")
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric("Modelo", "✅" if modelo else "❌")
+        if modelo:
+            st.caption(f"{modelo.n_features_in_} features")
+
+    with col2:
+        st.metric("Scaler", "✅" if scaler else "⚠️")
+        if scaler:
+            st.caption(f"{scaler.n_features_in_} features")
+
+    with col3:
+        st.metric("Ejemplos", "✅" if ejemplos_df is not None else "❌")
+        if ejemplos_df is not None:
+            st.caption(f"{len(ejemplos_df)} registros")
+
+    return modelo, scaler, ejemplos_df, feature_names, None
 
 
 def crear_features_completas(inputs_usuario):

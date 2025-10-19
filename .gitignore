@@ -13,6 +13,9 @@ build/
 # Jupyter
 .ipynb_checkpoints/
 
+.gitignore
+2.31.0
+
 # Outputs
 output/
 *.pkl
