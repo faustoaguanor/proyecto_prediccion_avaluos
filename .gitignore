@@ -15,7 +15,7 @@ build/
 
 # Outputs
 output/
-#*.pkl
+*.pkl
 #*.joblib
 
 # Data

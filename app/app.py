@@ -71,11 +71,12 @@ st.markdown(
 )
 
 
-# Cargar modelo y ejemplos
+# Cargar modelo, scaler y ejemplos
 @st.cache_resource
 def cargar_modelo_y_ejemplos():
-    """Carga el modelo entrenado y ejemplos de test"""
+    """Carga el modelo entrenado, scaler y ejemplos de test"""
     modelo = None
+    scaler = None
     ejemplos_df = None
     feature_names = None
     error = None
@@ -83,9 +84,10 @@ def cargar_modelo_y_ejemplos():
     try:
         # Cargar modelo
         posibles_rutas = [
-            Path("output/models/experiment_a/RandomForest.pkl"),
-            Path("app/RandomForest.pkl"),
-            Path("RandomForest.pkl"),
+            Path("https://drive.google.com/uc?id=1-dBlir79JO8J0vv8eDjQtIgRq_wh4Pb8"),
+            Path("output/models/experiment_a/randomforest_model.pkl"),
+            Path("app/randomforest_model.pkl"),
+            Path("randomforest_model.pkl"),
         ]
 
         for ruta in posibles_rutas:
@@ -100,7 +102,20 @@ def cargar_modelo_y_ejemplos():
 
         if modelo is None:
             error = "No se encontró el modelo RandomForest.pkl en ninguna ubicación esperada"
-            return None, None, None, error
+            return None, None, None, None, error
+
+        # Intentar cargar scaler
+        posibles_rutas_scaler = [
+            Path("https://drive.google.com/uc?id=18ptHEZo_vud1z7rBwfZLjHy2M6RjvvA2"),
+            Path("output/models/experiment_a/scaler.pkl"),
+            Path("app/scaler.pkl"),
+            Path("scaler.pkl"),
+        ]
+
+        for ruta in posibles_rutas_scaler:
+            if ruta.exists():
+                scaler = joblib.load(ruta)
+                break
 
         # Cargar ejemplos
         posibles_rutas_ejemplos = [
@@ -111,13 +126,20 @@ def cargar_modelo_y_ejemplos():
 
         for ruta in posibles_rutas_ejemplos:
             if ruta.exists():
-                ejemplos_df = pd.read_excel(ruta)
+                # Intentar cargar la hoja con SOLO las features del modelo
+                try:
+                    ejemplos_df = pd.read_excel(ruta, sheet_name="Ejemplos_Test")
+                    st.write("✓ Cargada hoja 'Ejemplos_Test'")
+                except:
+                    # Si no existe esa hoja, cargar la primera
+                    ejemplos_df = pd.read_excel(ruta)
+                    st.write("⚠️ Usando hoja por defecto")
                 break
 
-        return modelo, ejemplos_df, feature_names, None
+        return modelo, scaler, ejemplos_df, feature_names, None
 
     except Exception as e:
-        return None, None, None, str(e)
+        return None, None, None, None, str(e)
 
 
 def crear_features_completas(inputs_usuario):
@@ -255,6 +277,11 @@ def crear_features_completas(inputs_usuario):
     return features
 
 
+def validar_dataframe(df):
+    """Verifica si un DataFrame es válido y no está vacío"""
+    return df is not None and isinstance(df, pd.DataFrame) and not df.empty
+
+
 def validar_inputs(inputs):
     """Valida que los inputs estén en rangos razonables"""
     warnings = []
@@ -283,22 +310,55 @@ def main():
     )
 
     # Cargar modelo y ejemplos
-    modelo, ejemplos_df, feature_names, error = cargar_modelo_y_ejemplos()
+    modelo, scaler, ejemplos_df, feature_names, error = cargar_modelo_y_ejemplos()
 
     if error:
         st.error(f"❌ Error al cargar recursos: {error}")
         st.info(
             """
         ℹ️ **Archivos necesarios:**
-        - `output/models/experiment_a/RandomForest.pkl`
-        - `output/ejemplos_test_streamlit.xlsx` (opcional)
         
-        **O alternativamente:**
+        **OBLIGATORIOS:**
+        - `output/models/experiment_a/RandomForest.pkl`
+        - `output/ejemplos_test_streamlit.xlsx` ← **CRÍTICO para predicciones**
+        
+        **RECOMENDADOS:**
+        - `output/models/experiment_a/scaler.pkl`
+        
+        **Alternativa:**
         - `app/RandomForest.pkl`
         - `app/ejemplos_test_streamlit.xlsx`
+        - `app/scaler.pkl`
+        
+        **¿Cómo obtener los archivos?**
+        Ejecuta el pipeline completo:
+        ```bash
+        python main.py
+        ```
+        Esto generará todos los archivos necesarios.
         """
         )
         return
+
+    # CRÍTICO: Verificar que hay ejemplos
+    if not validar_dataframe(ejemplos_df):
+        st.error("❌ **Archivo de ejemplos no encontrado**")
+        st.warning(
+            """
+        Esta app **REQUIERE** el archivo `ejemplos_test_streamlit.xlsx` para funcionar.
+        
+        **¿Por qué?**
+        El modelo espera features exactas del entrenamiento (incluyendo IDs, features de leakage, etc.)
+        que solo están en el archivo de ejemplos.
+        
+        **Solución:**
+        1. Ejecuta el pipeline: `python main.py`
+        2. Esto generará: `output/ejemplos_test_streamlit.xlsx`
+        3. Copia a: `app/ejemplos_test_streamlit.xlsx`
+        4. Recarga la app
+        """
+        )
+        st.stop()
 
     # Sidebar - Información del modelo
     with st.sidebar:
@@ -316,6 +376,7 @@ def main():
         - **MAE:** $27,022
         - **MAPE:** 12.96%
         - **Features totales:** {modelo.n_features_in_ if modelo else 60}
+        - **Scaler:** {'✅ Cargado' if scaler else '⚠️ No encontrado'}
         - **Transformación:** Logarítmica
         """
         )
@@ -350,10 +411,21 @@ def main():
         """
         )
 
-        if ejemplos_df is not None:
-            st.markdown("---")
+        st.markdown("---")
+        if validar_dataframe(ejemplos_df):
             st.markdown(f"### 📝 Ejemplos Disponibles")
-            st.info(f"{len(ejemplos_df)} ejemplos cargados del test set")
+            st.success(f"✅ {len(ejemplos_df)} ejemplos cargados")
+            st.info("Usa checkbox 'Usar datos de ejemplo' para probarlos")
+        else:
+            st.markdown(f"### ⚠️ Ejemplos No Disponibles")
+            st.error("Archivo requerido: ejemplos_test_streamlit.xlsx")
+            st.info(
+                """
+            **Sin este archivo la app NO puede hacer predicciones.**
+            
+            Ejecuta: `python main.py`
+            """
+            )
 
     # Tabs principales
     tab1, tab2, tab3 = st.tabs(["🎯 Predicción", "📊 Análisis", "ℹ️ Ayuda"])
@@ -362,7 +434,7 @@ def main():
         st.markdown("### Ingrese los Datos de la Propiedad")
 
         # Opción de cargar ejemplo
-        if ejemplos_df is not None and len(ejemplos_df) > 0:
+        if validar_dataframe(ejemplos_df):
             st.markdown("#### 📂 Cargar Ejemplo del Test Set")
             col_ejemplo, col_info = st.columns([2, 3])
 
@@ -380,13 +452,16 @@ def main():
                     st.info("✅ Datos cargados del ejemplo. Puedes modificarlos abajo.")
 
             st.markdown("---")
+        else:
+            usar_ejemplo = False
+            idx_ejemplo = 0
 
         col1, col2, col3 = st.columns(3)
 
         with col1:
             st.markdown("#### 🏗️ Construcción")
 
-            if ejemplos_df is not None and usar_ejemplo:
+            if validar_dataframe(ejemplos_df) and usar_ejemplo:
                 default_area_const = float(
                     ejemplos_df.iloc[idx_ejemplo].get("Area_Construccion", 150.0)
                 )
@@ -420,7 +495,7 @@ def main():
         with col2:
             st.markdown("#### 📐 Terreno")
 
-            if ejemplos_df is not None and usar_ejemplo:
+            if validar_dataframe(ejemplos_df) and usar_ejemplo:
                 default_area_terreno = float(
                     ejemplos_df.iloc[idx_ejemplo].get("Area_Terreno_Escri", 200.0)
                 )
@@ -459,7 +534,7 @@ def main():
         with col3:
             st.markdown("#### 📍 Ubicación")
 
-            if ejemplos_df is not None and usar_ejemplo:
+            if validar_dataframe(ejemplos_df) and usar_ejemplo:
                 default_long = float(
                     ejemplos_df.iloc[idx_ejemplo].get("Longitud", -78.5)
                 )
@@ -553,40 +628,198 @@ def main():
         # Botón de predicción
         col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
         with col_btn2:
-            predecir = st.button("🎯 PREDECIR AVALÚO", width="stretch", type="primary")
+            predecir = st.button(
+                "🎯 PREDECIR AVALÚO", use_container_width=True, type="primary"
+            )
 
         if predecir:
             try:
-                # Crear todas las features necesarias
-                with st.spinner("Generando features..."):
-                    features_completas = crear_features_completas(inputs_usuario)
+                # DEBUG: Mostrar información del modelo
+                st.markdown("### 🔍 Debug: Información del Modelo")
+                st.info(
+                    f"""
+                **Modelo cargado:**
+                - Features esperadas: {modelo.n_features_in_ if modelo else 'N/A'}
+                - Primeras 10 features: {list(feature_names[:10]) if feature_names is not None else 'N/A'}
+                """
+                )
 
-                    # Convertir a DataFrame
-                    X_pred = pd.DataFrame([features_completas])
+                # ESTRATEGIA: Siempre usar ejemplos como base
+                if validar_dataframe(ejemplos_df):
+                    with st.spinner("Preparando features..."):
+                        # Tomar un ejemplo como base (siempre el primero si no hay ejemplo seleccionado)
+                        if usar_ejemplo and idx_ejemplo is not None:
+                            X_pred = ejemplos_df.iloc[[idx_ejemplo]].copy()
+                            st.success(
+                                f"✅ Usando Ejemplo #{idx_ejemplo + 1} como base"
+                            )
+                        else:
+                            X_pred = ejemplos_df.iloc[[0]].copy()
+                            st.warning(
+                                "⚠️ Usando Ejemplo #1 como base (valores modificables)"
+                            )
 
-                    # Verificar que tenemos todas las features
-                    if feature_names is not None:
-                        # Reordenar columnas según el orden del modelo
-                        missing_cols = set(feature_names) - set(X_pred.columns)
-                        if missing_cols:
-                            # Añadir columnas faltantes con valores por defecto
-                            for col in missing_cols:
-                                X_pred[col] = 0
+                        # DEBUG: Mostrar features cargadas
+                        st.markdown("### 🔍 Debug: Features Cargadas")
+                        st.info(
+                            f"""
+                        **Features del ejemplo:**
+                        - Total de columnas: {len(X_pred.columns)}
+                        - Primeras 10: {list(X_pred.columns[:10])}
+                        - Últimas 10: {list(X_pred.columns[-10:])}
+                        """
+                        )
 
-                        # Reordenar
-                        X_pred = X_pred[feature_names]
+                        # MODIFICAR con los valores del usuario (solo las básicas)
+                        # Esto permite que el usuario "ajuste" el ejemplo con sus valores
+                        modificaciones = {
+                            "Area_Construccion": area_construccion,
+                            "Pisos_PUGS": pisos,
+                            "Area_Terreno_Escri": area_terreno,
+                            "Frente_Total": frente_total,
+                            "Lot_Min_PUGS": lot_min,
+                            "Longitud": longitud,
+                            "Latitud": latitud,
+                            "Distancia_Centro": distancia_centro,
+                        }
 
-                    st.success(
-                        f"✅ {len(X_pred.columns)} features generadas correctamente"
+                        # Aplicar modificaciones solo a las columnas que existen
+                        columnas_modificadas = []
+                        for col, valor in modificaciones.items():
+                            if col in X_pred.columns:
+                                X_pred.loc[X_pred.index[0], col] = valor
+                                columnas_modificadas.append(col)
+
+                        st.success(
+                            f"✅ {len(columnas_modificadas)} features modificadas con tus valores"
+                        )
+
+                        # DEBUG: Verificar valores modificados
+                        with st.expander("🔍 Ver valores modificados"):
+                            st.write("**Valores que ingresaste:**")
+                            for col in columnas_modificadas:
+                                st.write(f"- {col}: {X_pred.loc[X_pred.index[0], col]}")
+
+                        # Verificar match EXACTO con el modelo
+                        if feature_names is not None:
+                            st.markdown("### 🔍 Debug: Verificación de Features")
+
+                            # Comparar columnas
+                            features_ejemplo = set(X_pred.columns)
+                            features_modelo = set(feature_names)
+
+                            missing = features_modelo - features_ejemplo
+                            extra = features_ejemplo - features_modelo
+
+                            if missing:
+                                st.error(
+                                    f"❌ **Faltan {len(missing)} features requeridas por el modelo**"
+                                )
+                                st.error(f"Primeras 10 faltantes: {list(missing)[:10]}")
+                                st.stop()
+
+                            if extra:
+                                st.warning(
+                                    f"⚠️ **Hay {len(extra)} features extra (serán eliminadas)**"
+                                )
+                                st.warning(f"Primeras 10 extra: {list(extra)[:10]}")
+                                X_pred = X_pred.drop(columns=list(extra))
+
+                            # Reordenar para que coincidan EXACTAMENTE
+                            if list(X_pred.columns) != list(feature_names):
+                                st.info(
+                                    "🔄 Reordenando features para coincidir con el modelo..."
+                                )
+                                X_pred = X_pred[feature_names]
+                                st.success("✅ Features reordenadas correctamente")
+                            else:
+                                st.success(
+                                    "✅ Features coinciden EXACTAMENTE con el modelo"
+                                )
+
+                            # DEBUG: Verificación final
+                            st.info(
+                                f"""
+                            **Verificación Final:**
+                            - Features en X_pred: {len(X_pred.columns)}
+                            - Features esperadas: {len(feature_names)}
+                            - ¿Orden correcto?: {'✅ SÍ' if list(X_pred.columns) == list(feature_names) else '❌ NO'}
+                            """
+                            )
+
+                else:
+                    st.error(
+                        """
+                    ❌ **No hay ejemplos disponibles**
+                    
+                    Esta app REQUIERE el archivo `ejemplos_test_streamlit.xlsx`
+                    
+                    **Solución:**
+                    1. Ejecuta: `python main.py`
+                    2. Copia: `output/ejemplos_test_streamlit.xlsx` → `app/`
+                    3. Recarga la app
+                    """
                     )
-
+                    st.stop()
                 # Hacer predicción (en escala logarítmica)
                 with st.spinner("Calculando predicción..."):
-                    prediccion_log = modelo.predict(X_pred)[0]
+                    try:
+                        # Aplicar scaler si está disponible
+                        if scaler is not None:
+                            st.info("✅ Aplicando scaler...")
+                            X_pred_array = scaler.transform(
+                                X_pred
+                            )  # ← SCALER HABILITADO
+                            st.success(
+                                f"✅ Scaler aplicado: shape {X_pred_array.shape}"
+                            )
+                        else:
+                            st.warning(
+                                "⚠️ Scaler no encontrado - usando features sin escalar"
+                            )
+                            X_pred_array = X_pred.values
 
-                    # Des-transformar de log a escala original (dólares)
-                    prediccion = np.exp(prediccion_log)
+                        # Verificar tipo de datos
+                        st.write(
+                            f"🔍 Tipo: {type(X_pred_array)}, Shape: {X_pred_array.shape}"
+                        )
 
+                        # PREDECIR
+                        prediccion_log = modelo.predict(X_pred_array)[0]
+                        st.success(f"✅ Predicción exitosa: {prediccion_log:.4f}")
+
+                        # Protección contra overflow
+                        if prediccion_log > 20:
+                            st.warning(
+                                f"⚠️ Valor log muy alto ({prediccion_log:.2f}), corrigiendo..."
+                            )
+                            prediccion_log = np.clip(prediccion_log, 9, 15)
+
+                        if prediccion_log < 9:
+                            st.warning(
+                                f"⚠️ Valor log muy bajo ({prediccion_log:.2f}), corrigiendo..."
+                            )
+                            prediccion_log = np.clip(prediccion_log, 9, 15)
+
+                        # Des-transformar de log a escala original
+                        prediccion = np.exp(prediccion_log)
+
+                        # Validar rango
+                        if prediccion < 1000 or prediccion > 10_000_000:
+                            st.error(
+                                f"❌ Predicción fuera de rango: ${prediccion:,.2f}"
+                            )
+                            st.info("Usando valor promedio como fallback...")
+                            prediccion = 150000
+
+                        st.write(f"💰 **Predicción final:** ${prediccion:,.2f}")
+
+                    except Exception as e:
+                        st.error(f"❌ Error: {str(e)}")
+                        import traceback
+
+                        st.code(traceback.format_exc())
+                        st.stop()
                 # Mostrar resultado
                 st.markdown("---")
                 st.markdown("## 💰 Resultado de la Predicción")
@@ -687,23 +920,57 @@ def main():
                     yaxis=dict(visible=False, range=[0.5, 1.5]),
                 )
 
-                st.plotly_chart(fig, width="stretch")
+                st.plotly_chart(fig, use_container_width=True)
 
             except Exception as e:
                 st.error(f"❌ Error al hacer la predicción: {str(e)}")
-                st.info(
-                    f"""
-                **Debug Info:**
-                - Features generadas: {len(features_completas) if 'features_completas' in locals() else 0}
-                - Features esperadas: {modelo.n_features_in_}
-                - Error detallado: {str(e)}
+
+                # Debug detallado
+                with st.expander("🔍 Información de Debug", expanded=True):
+                    st.code(
+                        f"""
+Error completo: {str(e)}
+
+Features en X_pred: {len(X_pred.columns) if 'X_pred' in locals() else 'N/A'}
+Features esperadas por modelo: {modelo.n_features_in_}
+
+Primeras 10 features en X_pred:
+{list(X_pred.columns[:10]) if 'X_pred' in locals() else 'N/A'}
+
+Primeras 10 features esperadas:
+{list(feature_names[:10]) if feature_names is not None else 'N/A'}
+                    """
+                    )
+
+                st.error(
+                    """
+                **💡 Soluciones posibles:**
+                
+                1. **Verifica que usas el modelo correcto:**
+                   - Debe ser del Experimento A (sin leakage)
+                   - Ubicación: `output/models/experiment_a/RandomForest.pkl`
+                
+                2. **Verifica que tienes el archivo de ejemplos:**
+                   - Ubicación: `output/ejemplos_test_streamlit.xlsx`
+                   - Debe tener 5 registros del test set
+                
+                3. **Re-ejecuta el pipeline completo:**
+                   ```bash
+                   python main.py
+                   ```
+                   Esto regenerará todos los archivos correctamente.
+                
+                4. **Verifica la estructura:**
+                   - El modelo y los ejemplos deben ser del mismo experimento
+                   - Ambos generados en la misma ejecución de main.py
                 """
                 )
 
     with tab2:
         st.markdown("### 📊 Análisis de Features")
 
-        if "prediccion" in locals():
+        tiene_prediccion = "prediccion" in locals() and prediccion is not None
+        if tiene_prediccion:
             col_a1, col_a2 = st.columns(2)
 
             with col_a1:
@@ -724,7 +991,7 @@ def main():
                     )
                 )
                 fig_areas.update_layout(title="Áreas", yaxis_title="m²", height=300)
-                st.plotly_chart(fig_areas, width="stretch")
+                st.plotly_chart(fig_areas, use_container_width=True)
 
             with col_a2:
                 st.markdown("#### 📍 Ubicación e Influencias")
@@ -757,7 +1024,7 @@ def main():
                     title="Influencias Normalizadas",
                     height=300,
                 )
-                st.plotly_chart(fig_radar, width="stretch")
+                st.plotly_chart(fig_radar, use_container_width=True)
 
             # Tabla resumen
             st.markdown("#### 📋 Resumen de Inputs")
@@ -783,7 +1050,7 @@ def main():
                     ],
                 }
             )
-            st.dataframe(df_summary, width="stretch", hide_index=True)
+            st.dataframe(df_summary, use_container_width=True, hide_index=True)
         else:
             st.info("👆 Realiza una predicción primero")
 

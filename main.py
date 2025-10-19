@@ -291,7 +291,7 @@ class CatastroPipeline:
         )
 
         # Guardar mejor modelo
-        models_a.save_models(f"{self.output_dir}/models/experiment_a")
+        models_a.save_models(f"{self.output_dir}/models/experiment_a0")
 
         # ✅ AGREGAR FEATURE SELECTION AQUÍ (OPCIONAL) ✅
         APLICAR_FEATURE_SELECTION = True  # ← Cambiar a False para desactivar
@@ -321,6 +321,40 @@ class CatastroPipeline:
 
         # Guardar mejor modelo
         models_a.save_models(f"{self.output_dir}/models/experiment_a")
+        # ========== GUARDAR SCALER DEL EXPERIMENTO A ==========
+        print("\n[GUARDANDO SCALER]")
+        from sklearn.preprocessing import StandardScaler
+
+        # Entrenar scaler con X_train_a
+        scaler = StandardScaler()
+        scaler.fit(X_train_a)
+
+        # Guardar en dos ubicaciones
+        import joblib
+
+        scaler_path_output = f"{self.output_dir}/models/experiment_a/scaler.pkl"
+        scaler_path_app = "app/scaler.pkl"
+
+        os.makedirs(os.path.dirname(scaler_path_output), exist_ok=True)
+        os.makedirs("app", exist_ok=True)
+
+        joblib.dump(scaler, scaler_path_output)
+        joblib.dump(scaler, scaler_path_app)
+
+        print(f"✅ Scaler guardado:")
+        print(f"   - {scaler_path_output}")
+        print(f"   - {scaler_path_app}")
+        print(f"   - Features: {scaler.n_features_in_}")
+
+        # Verificar que NO tiene leakage
+        if hasattr(scaler, "feature_names_in_"):
+            tiene_aiva = "Aiva_Valor" in scaler.feature_names_in_
+            tiene_cat = "Cat_Lote_Id" in scaler.feature_names_in_
+
+            if tiene_aiva or tiene_cat:
+                print("⚠️ WARNING: Scaler tiene features de leakage!")
+            else:
+                print("✅ Scaler SIN leakage seleccioón variables - CORRECTO")
 
         # ========== 6. EXPERIMENTO B: CON TODAS LAS FEATURES ==========
         print("\n" + "■" * 70)
@@ -706,11 +740,13 @@ class CatastroPipeline:
         test_completo["Error_Porcentual"] = errores_porcentuales
         test_completo["Error_Relativo"] = y_pred_test_a - y_test_a"""
 
-        test_completo["Valoracion_Real"] = y_test_a_dolar  # ✅ Ya des-transformado
+        test_completo["Valoracion_Real"] = (
+            y_test_a_dolar.values
+        )  # ✅ Ya des-transformado
         test_completo["Valoracion_Predicha"] = y_pred_test_a  # ✅ Ya des-transformado
         test_completo["Error_Absoluto"] = errores_absolutos
         test_completo["Error_Porcentual"] = errores_porcentuales
-        test_completo["Error_Relativo"] = y_pred_test_a - y_test_a_dolar
+        test_completo["Error_Relativo"] = y_pred_test_a - y_test_a_dolar.values
 
         # 5. Clasificar magnitud del error
         test_completo["Magnitud_Error"] = pd.cut(
