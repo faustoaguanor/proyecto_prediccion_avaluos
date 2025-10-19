@@ -115,7 +115,7 @@ def cargar_modelo_y_ejemplos():
         st.info("📡 Modelo local no encontrado. Descargando desde Google Drive...")
         st.caption("Archivo: 300 MB | Esto puede tardar 1-2 minutos")
 
-        url_modelo = "https://drive.google.com/uc?id=1-dBlir79JO8J0vv8eDjQtIgRq_wh4Pb8"
+        url_modelo = "https://drive.google.com/uc?id=11-BJThbPbmX6nInf7is04I6YA4Ur76AK"
 
         # Inicializar barra de progreso
         progress_bar = st.progress(0)
