@@ -11,15 +11,6 @@
 
 **Sistema inteligente de valoración catastral con detección automática de Target Leakage**
 
-[Características](#-características-principales) •
-[Instalación](#-instalación) •
-[Uso](#-uso-rápido) •
-[Resultados](#-resultados-destacados) •
-[Documentación](#-documentación) •
-[Contribuir](#-contribuir)
-
-<img src="https://raw.githubusercontent.com/faustoaguanor/proyecto_prediccion_avaluos/main/docs/banner.png" alt="Banner" width="800"/>
-
 </div>
 
 ---
