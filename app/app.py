@@ -4,9 +4,13 @@ Modelo: RandomForest con 60 features optimizadas + Log-Transform
 R² = 0.9605 | RMSE = $46,440 | MAE = $27,022
 """
 
+import os
+import tempfile
+import time
 from io import BytesIO
 from pathlib import Path
 
+import gdown
 import joblib
 import numpy as np
 import pandas as pd
@@ -83,47 +87,106 @@ def cargar_modelo_y_ejemplos():
     feature_names = None
 
     # ========== CARGAR MODELO ==========
-    st.info("📥 Cargando modelo...")
+    st.markdown("### 📥 Cargando Modelo RandomForest")
 
-    url_modelo = "https://drive.google.com/uc?export=download&id=1-dBlir79JO8J0vv8eDjQtIgRq_wh4Pb8"
+    # 1. Intentar cargar localmente primero
+    posibles_rutas_modelo = [
+        Path("output/models/experiment_a/randomforest_model.pkl"),
+        Path("app/randomforest_model.pkl"),
+        Path("randomforest_model.pkl"),
+    ]
 
-    try:
-        response = requests.get(url_modelo, timeout=30)
-        response.raise_for_status()
-        modelo = joblib.load(BytesIO(response.content))
-        feature_names = (
-            modelo.feature_names_in_ if hasattr(modelo, "feature_names_in_") else None
-        )
-        st.success("✅ Modelo cargado desde Google Drive")
+    for ruta in posibles_rutas_modelo:
+        if ruta.exists():
+            try:
+                modelo = joblib.load(ruta)
+                feature_names = (
+                    modelo.feature_names_in_
+                    if hasattr(modelo, "feature_names_in_")
+                    else None
+                )
+                st.success(f"✅ Modelo cargado desde: {ruta}")
+                break
+            except Exception as e:
+                st.warning(f"⚠️ Error cargando {ruta}: {str(e)[:50]}")
 
-    except Exception as e:
-        st.warning(f"⚠️ No se pudo cargar desde Google Drive: {str(e)[:100]}...")
-        st.info("🔄 Intentando cargar desde archivos locales...")
+    # 2. Si no está local, descargar desde Google Drive con barra de progreso
+    if modelo is None:
+        st.info("📡 Modelo local no encontrado. Descargando desde Google Drive...")
+        st.caption("Archivo: 300 MB | Esto puede tardar 1-2 minutos")
 
-        posibles_rutas = [
-            Path("output/models/experiment_a/randomforest_model.pkl"),
-            Path("app/randomforest_model.pkl"),
-            Path("randomforest_model.pkl"),
-        ]
+        url_modelo = "https://drive.google.com/uc?id=1-dBlir79JO8J0vv8eDjQtIgRq_wh4Pb8"
 
-        for ruta in posibles_rutas:
-            if ruta.exists():
-                try:
-                    modelo = joblib.load(ruta)
-                    feature_names = (
-                        modelo.feature_names_in_
-                        if hasattr(modelo, "feature_names_in_")
-                        else None
-                    )
-                    st.success(f"✅ Modelo cargado desde: {ruta}")
-                    break
-                except Exception as e:
-                    st.error(f"❌ Error cargando {ruta}: {str(e)[:50]}")
+        # Inicializar barra de progreso
+        progress_bar = st.progress(0)
+        status_text = st.empty()
 
-        if modelo is None:
-            error = "No se encontró el modelo en ninguna ubicación"
-            st.error(error)
-            return None, None, None, None, error
+        try:
+            # CLAVE: stream=True y timeout alto
+            response = requests.get(
+                url_modelo, stream=True, timeout=600
+            )  # ← 10 minutos
+            response.raise_for_status()
+
+            # Obtener tamaño total
+            total_size = int(response.headers.get("content-length", 0))
+
+            # Descargar en memoria con progreso
+            file_buffer = BytesIO()
+            downloaded = 0
+
+            if total_size > 0:
+                for chunk in response.iter_content(chunk_size=32768):  # 32 KB chunks
+                    if chunk:
+                        file_buffer.write(chunk)
+                        downloaded += len(chunk)
+
+                        # Actualizar progreso
+                        percentage = downloaded / total_size
+                        progress_bar.progress(min(percentage, 1.0))
+                        status_text.text(
+                            f"Descargando: {downloaded/(1024*1024):.1f} MB / "
+                            f"{total_size/(1024*1024):.1f} MB ({percentage*100:.0f}%)"
+                        )
+            else:
+                # Sin tamaño conocido
+                status_text.text("Descargando (tamaño desconocido)...")
+                file_buffer.write(response.content)
+                progress_bar.progress(1.0)
+
+            # Cargar modelo desde memoria
+            status_text.text("Cargando modelo en memoria...")
+            file_buffer.seek(0)
+            modelo = joblib.load(file_buffer)
+
+            # Limpiar widgets
+            progress_bar.empty()
+            status_text.empty()
+
+            feature_names = (
+                modelo.feature_names_in_
+                if hasattr(modelo, "feature_names_in_")
+                else None
+            )
+            st.success("✅ Modelo descargado correctamente desde Google Drive")
+
+        except requests.exceptions.Timeout:
+            progress_bar.empty()
+            status_text.empty()
+            st.error(
+                "❌ Timeout: La descarga tardó más de 10 minutos. Intenta de nuevo."
+            )
+            return None, None, None, None, "Timeout en descarga"
+
+        except Exception as e:
+            progress_bar.empty()
+            status_text.empty()
+            st.error(f"❌ Error descargando modelo: {str(e)}")
+            return None, None, None, None, str(e)
+
+    if modelo is None:
+        st.error("❌ No se pudo cargar el modelo")
+        return None, None, None, None, "No se encontró el modelo"
 
     # ========== CARGAR SCALER ==========
     st.info("📥 Cargando scaler...")
