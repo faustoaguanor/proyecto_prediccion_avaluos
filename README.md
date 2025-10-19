@@ -702,7 +702,6 @@ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
 
 ![GitHub code size](https://img.shields.io/github/languages/code-size/faustoaguanor/proyecto_prediccion_avaluos)
 ![GitHub repo size](https://img.shields.io/github/repo-size/faustoaguanor/proyecto_prediccion_avaluos)
-![Lines of code](https://img.shields.io/tokei/lines/github/faustoaguanor/proyecto_prediccion_avaluos)
 
 
 ### Issues y Pull Requests
