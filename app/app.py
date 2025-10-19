@@ -4,6 +4,7 @@ Modelo: RandomForest con 60 features optimizadas + Log-Transform
 R² = 0.9605 | RMSE = $46,440 | MAE = $27,022
 """
 
+from io import BytesIO
 from pathlib import Path
 
 import joblib
@@ -11,6 +12,7 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import requests
 import streamlit as st
 
 # Configuración de la página
@@ -81,28 +83,38 @@ def cargar_modelo_y_ejemplos():
     feature_names = None
     error = None
 
+    url_modelo = "https://drive.google.com/uc?id=1-dBlir79JO8J0vv8eDjQtIgRq_wh4Pb8"
     try:
+        response = requests.get(url_modelo)
+        response.raise_for_status()
+        modelo = joblib.load(BytesIO(response.content))
+        feature_names = (
+            modelo.feature_names_in_ if hasattr(modelo, "feature_names_in_") else None
+        )
+        st.success("Modelo cargado desde Google Drive ✅")
+    except Exception as e:
+        st.warning(f"No se pudo cargar el modelo desde Google Drive: {e}")
+        # intentar cargar local
         # Cargar modelo
         posibles_rutas = [
-            Path("https://drive.google.com/uc?id=1-dBlir79JO8J0vv8eDjQtIgRq_wh4Pb8"),
             Path("output/models/experiment_a/randomforest_model.pkl"),
             Path("app/randomforest_model.pkl"),
             Path("randomforest_model.pkl"),
         ]
 
         for ruta in posibles_rutas:
-            if ruta.exists():
-                modelo = joblib.load(ruta)
+            p = Path(ruta)
+            if p.exists():
+                modelo = joblib.load(p)
                 feature_names = (
                     modelo.feature_names_in_
                     if hasattr(modelo, "feature_names_in_")
                     else None
                 )
+                st.success(f"Modelo cargado desde {ruta} ✅")
                 break
-
         if modelo is None:
-            error = "No se encontró el modelo RandomForest.pkl en ninguna ubicación esperada"
-            return None, None, None, None, error
+            st.error("No se encontró el modelo en ninguna ubicación")
 
         # Intentar cargar scaler
         posibles_rutas_scaler = [
